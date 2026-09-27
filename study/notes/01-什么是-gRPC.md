@@ -224,21 +224,87 @@ gRPC 面临的第一个选择是：**自己设计一套传输协议，还是复�
 
 ---
 
-- [ ] **Q1** 看到一个教程里写 `new Channel("localhost", 5000)`，这段代码能直接用吗？如果不能，为什么？
+- [x] **Q1** 看到一个教程里写 `new Channel("localhost", 5000)`，这段代码能直接用吗？如果不能，为什么？
 
-- [ ] **Q2** 我们每秒调用 10 次，这算频繁吗？如果有人**每次调用都** `GrpcChannel.ForAddress(...)` 新建一个 channel，会发生什么？
+- [x] **Q2** 我们每秒调用 10 次，这算频繁吗？如果有人**每次调用都** `GrpcChannel.ForAddress(...)` 新建一个 channel，会发生什么？
 
-- [ ] **Q3** gRPC 是 REST 的替代品吗？我们现有的 REST 接口应该全部换成 gRPC 吗？
+- [x] **Q3** gRPC 是 REST 的替代品吗？我们现有的 REST 接口应该全部换成 gRPC 吗？
 
-- [ ] **Q4** 什么情况下**不该**用 gRPC？举一个你们系统里可能遇到的例子。
+- [x] **Q4** 什么情况下**不该**用 gRPC？举一个你们系统里可能遇到的例子。
 
 - [ ] **Q5** 都说 gRPC 比 REST 快。这个"快"具体来自哪里？在什么情况下这个优势会消失？
+  ⏳ **待重答** —— 第 02 节讲完 protobuf 编码后回来重做这题（"快"主要来自 protobuf，不是 HTTP/2）
 
-- [ ] **Q6** grpc-dotnet 不支持 keepalive。**为什么**？这个限制是 gRPC 设计上的疏忽，还是一种必然的取舍？
+- [x] **Q6** grpc-dotnet 不支持 keepalive。**为什么**？这个限制是 gRPC 设计上的疏忽，还是一种必然的取舍？
   （提示：回顾第 2 节"为什么选 HTTP/2"，以及第 5 节第 5 条）
 
-- [ ] **Q7** 如果你们要新做一个"应用读取内核状态"的接口，你会选 unary 还是 server streaming？
+- [x] **Q7** 如果你们要新做一个"应用读取内核状态"的接口，你会选 unary 还是 server streaming？
   说出你的理由，**以及你不确定的地方**。
+
+---
+
+## 7. 讨论后修正的关键认知（会话 01）
+
+> 答完第 6 节后，被纠正和强化的认知。**这才是这节真正的收获。**
+
+| # | 原来的认知 | 修正后 |
+|---|---|---|
+| 1 | 新建 channel 的问题是"构造对象耗时" | **对象构造几乎不花钱（纳秒级）**。贵的是连接建立握手链：socket → TCP → **TLS** → HTTP/2 → 发起调用。差距 1~2 个数量级（亚毫秒 vs 10~50ms） |
+| 2 | gRPC 快是因为用了 HTTP/2 | **主要来自 protobuf**（不传字段名、varint、按字段号跳转）。HTTP/2 贡献的是**并发效率**和**省掉重复握手**，不是单条消息更快 |
+| 3 | 连接不稳定会让 gRPC 优势消失 | **反了**。不稳定会**放大劣势**（TCP 队头阻塞），不是削弱优势。优势真正消失于：不复用连接 / 消息太小 / 大块二进制 / 瓶颈在别处 |
+| 4 | keepalive 做不到是因为 HTTP/2 协议没有 | **协议里有 PING 帧**，是 .NET 实现没暴露。而且 **.NET 5+ 已经支持了**（`SocketsHttpHandler.KeepAlivePingDelay`）—— 见 `pitfalls.md` 坑 1 更正 |
+| 5 | unary 每次都要重新建立通讯 | **unary 复用 TCP 连接**，只是新建一条 stream。差别是 **stream 的生命周期**，不是 TCP 连接 |
+| 6 | 同机跨进程"不太可能断连" | 内核重启、应用重启、安全软件干预、对端进程退出都会断。**"不太可能" ≠ "不会"；假设不断连 = 断连时行为未定义** |
+| 7 | 选 server streaming 是因为"持续连接" | unary 也是持续连接。**真正理由是：变化是事件驱动的，不知道下次变化何时到来** |
+
+### 两个新的重要认知
+
+#### ① gRPC 的定位是「软实时」，不是「硬实时」
+
+| 适合 | 不适合 |
+|---|---|
+| 监控、HMI、配置下发 | 控制环、安全联锁 |
+
+原因是**没有延迟上界**（GC 暂停、TCP 重传、线程调度），**不是"不稳定"**。
+
+> ⚠️ 说"不稳定"会误导你去加重试 —— 但**重试解决不了延迟问题**，只会让延迟更长。
+
+硬实时的逻辑应该留在内核内部，用共享内存或本地调用。**这是架构分层问题，和 gRPC 无关。**
+
+#### ② Server streaming 有一个被低估的风险：应用端可能拖住内核
+
+```
+应用消费慢（UI 卡顿 / GC）
+    → HTTP/2 流控窗口耗尽
+        → 服务端（内核侧）写入阻塞   ⚠️
+```
+
+**在工控系统里这可能是不可接受的：应用端的 UI 卡顿不应该影响内核的实时性。**
+
+缓解手段（Kestrel 配置，**是缓解不是消除**）：
+
+```csharp
+builder.WebHost.ConfigureKestrel(options =>
+{
+    var http2 = options.Limits.Http2;
+    http2.InitialConnectionWindowSize = 1024 * 1024 * 2;  // 2 MB
+    http2.InitialStreamWindowSize = 1024 * 1024;          // 1 MB
+});
+```
+
+### 两个设计约束（官方文档明确提到）
+
+1. **Server streaming 的客户端只能用「取消」来停止流**（它没有请求流）。
+   如果取消的开销影响服务端，官方建议**改用双向流** —— 客户端完成请求流即为一个优雅的停止信号。
+
+2. **流式调用必须 dispose。**
+   否则不只是客户端泄漏内存和资源 —— **服务端会一直留着这条流**。
+   大量泄漏的流会影响服务端稳定性。
+
+### 参考
+
+- [Performance best practices with gRPC](https://learn.microsoft.com/en-us/aspnet/core/grpc/performance)
+- [Inter-process communication with gRPC](https://learn.microsoft.com/en-us/aspnet/core/grpc/interprocess)
 
 ---
 
