@@ -213,88 +213,32 @@ gRPC 面临的第一个选择是：**自己设计一套传输协议，还是复�
 
 ---
 
-## 6. 工程实践问答
+## 6. 工程实践问答（你来答，我来批）
 
-### Q1：我看到一个教程写 `new Channel("localhost", 5000)`，这个能用吗？
-
-**那是老实现 Grpc.Core 的写法。** 它从 2021 年 5 月起进入维护模式，未来会废弃。
-
-这个仓库（grpc-dotnet）的写法是 `GrpcChannel.ForAddress("https://localhost:5000")`。
-
-**判据**：看到 `new Channel(...)` 或 `new Server(...)` → 资料过时，换一篇。
-
----
-
-### Q2：我们每秒调用 10 次，这算频繁吗？会有性能问题吗？
-
-**对 gRPC 来说完全不算频繁。** 单条连接上跑几百上千 QPS 都是常态。
-
-但要注意的是**别每次都新建 channel**。`GrpcChannel` 是设计成**长期复用**的（内部管理连接池、负载均衡等）。频繁创建会不断重建连接，这才是真正的问题。
-
-```csharp
-// ❌ 错误：每次调用都建 channel
-var reply = await new DeviceServiceClient(GrpcChannel.ForAddress(url)).GetTemperatureAsync(req);
-
-// ✅ 正确：channel 建一次，长期复用
-var channel = GrpcChannel.ForAddress(url);   // 应用启动时建
-var client = new DeviceServiceClient(channel);
-```
+> **这一节只给问题，不给答案。**
+>
+> 你先自己想、自己写答案，然后我们聊一遍 —— 我负责挑错、补充、以及指出你没考虑到的角度。
+>
+> 答不上来很正常，**猜也行**。猜错的地方才是真正学到东西的地方。
+> 讨论完一题就勾掉一个。
 
 ---
 
-### Q3：gRPC 是 REST 的替代品吗？我该把现有的 REST 接口都换掉吗？
+- [ ] **Q1** 看到一个教程里写 `new Channel("localhost", 5000)`，这段代码能直接用吗？如果不能，为什么？
 
-**不是"替代"，是两条不同的路线。**
+- [ ] **Q2** 我们每秒调用 10 次，这算频繁吗？如果有人**每次调用都** `GrpcChannel.ForAddress(...)` 新建一个 channel，会发生什么？
 
-- **REST**：面向**资源**。`GET /devices/42/temperature` —— 你在操作一个资源
-- **gRPC**：面向**方法**。`DeviceService.GetTemperature(...)` —— 你在调用一个函数
+- [ ] **Q3** gRPC 是 REST 的替代品吗？我们现有的 REST 接口应该全部换成 gRPC 吗？
 
-gRPC 表面上也在用 HTTP POST，但它**故意违反了 REST 的资源导向**，把 URL 当方法名用。
+- [ ] **Q4** 什么情况下**不该**用 gRPC？举一个你们系统里可能遇到的例子。
 
-**建议**：
-- 内部服务之间、对性能有要求、需要流式 → gRPC
-- 对外开放、需要浏览器直接访问、需要人眼可读 → 保留 REST
+- [ ] **Q5** 都说 gRPC 比 REST 快。这个"快"具体来自哪里？在什么情况下这个优势会消失？
 
-两者可以共存（gRPC 甚至有 JSON transcoding，能自动把 gRPC 服务暴露成 REST 接口）。
+- [ ] **Q6** grpc-dotnet 不支持 keepalive。**为什么**？这个限制是 gRPC 设计上的疏忽，还是一种必然的取舍？
+  （提示：回顾第 2 节"为什么选 HTTP/2"，以及第 5 节第 5 条）
 
----
-
-### Q4：什么时候**不该**用 gRPC？
-
-| 场景 | 原因 |
-|---|---|
-| 浏览器要直接调用 | 浏览器发不了 HTTP/2 gRPC 请求，得加 gRPC-Web 转换层 |
-| 需要人能直接看懂、能 `curl` 调试 | gRPC 是二进制，人眼不可读 |
-| 极简的一次性脚本、对外公开 API | 引入 proto + 代码生成的成本不划算 |
-| 需要 HTTP 缓存语义（CDN、ETag） | gRPC 用 POST，天然不吃这些缓存 |
-
----
-
-### Q5：都说 gRPC 比 REST 快，到底快多少？
-
-**通常更快，但常常没有想象中那么多，而且这不是它最重要的价值。**
-
-它快的原因是：二进制编码比 JSON 小、解析不用字符串匹配、HTTP/2 头部压缩。
-
-**但有几个前提容易被忽略：**
-- 如果不复用连接（每次新建），HTTP/2 多路复用的优势就没了
-- 如果消息很小、网络很快，差距会缩小
-- 真正拉开差距的是**高频小消息**和**流式场景**
-
-**更重要的认知**：gRPC 的核心价值是**标准化**（第 2 节那十件事），不是速度。选它主要应该因为契约、跨语言、流式，而不是因为"快"。
-
----
-
-### Q6：怎么快速判断一份 gRPC 资料是不是过时的？
-
-看两个地方：
-
-| 看什么 | 过时（Grpc.Core） | 当前（grpc-dotnet） |
-|---|---|---|
-| 客户端怎么建 | `new Channel("host", port)` | `GrpcChannel.ForAddress(...)` |
-| 服务端怎么建 | `new Server { Services = {...} }` | `WebApplication` + `MapGrpcService<T>()` |
-
-还有一个信号：如果资料在讲 `.csproj` 里手工配 `<Protobuf>` 项而没有提到 `Grpc.Tools`，也可能比较旧。
+- [ ] **Q7** 如果你们要新做一个"应用读取内核状态"的接口，你会选 unary 还是 server streaming？
+  说出你的理由，**以及你不确定的地方**。
 
 ---
 
