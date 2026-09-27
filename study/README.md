@@ -37,7 +37,7 @@
 
 **目标是言之有物。这段完全不读源码。**
 
-- [ ] 01. gRPC 是什么：与 REST 的区别、与 `Grpc.Core`（已进维护模式）的区别、为什么基于 HTTP/2
+- [x] 01. gRPC 是什么：与 REST 的区别、与 `Grpc.Core`（已进维护模式）的区别、为什么基于 HTTP/2 → [笔记](notes/01-什么是-gRPC.md)
 - [ ] 02. Protocol Buffers 基础：`.proto` 语法、生成哪些代码、为什么比 JSON 高效
 - [ ] 03. proto3 类型系统与**版本兼容规则**（字段号、`reserved`、不要复用字段号）
 - [ ] 04. 四种调用形态：unary / server streaming / client streaming / duplex，各自适用场景
