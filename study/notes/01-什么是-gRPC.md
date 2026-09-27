@@ -55,6 +55,38 @@ Console.WriteLine(reply.Celsius);
 
 ---
 
+### gRPC 和 REST 是什么关系
+
+**REST 不是协议，是一种架构风格**（Roy Fielding, 2000）。核心四条：
+
+1. **资源** —— 一切皆资源，用 URL 标识（`/devices/42/temperature`）
+2. **统一接口** —— 用 HTTP 动词操作资源（GET 读 / POST 建 / PUT 改 / DELETE 删）
+3. **无状态** —— 每个请求自带全部上下文，服务端不记得上次是谁
+4. **表述** —— 资源的表现形式（JSON / XML），可协商
+
+机械层面就是 HTTP 请求-响应：`方法 + URL + 头 + 体` → `状态码 + 头 + 体`
+
+| | REST | gRPC |
+|---|---|---|
+| 传输 | HTTP/1.1（通常） | HTTP/2（必须） |
+| 载荷 | 文本（JSON） | 二进制（protobuf） |
+| 接口标识 | URL 路径 + 动词 | 服务名 + 方法名（`/pkg.Service/Method`） |
+| 契约 | OpenAPI（**可选、事后补**） | `.proto`（**强制、编译期**） |
+| 调用单元 | 一次请求-响应 | **一条流** |
+| 流式 | 外挂（SSE / WebSocket） | 原生 |
+| 人眼可读 | 是（`curl` 就能调） | 否（需 `grpcurl` + 反射） |
+
+**最本质的区别：面向资源 vs 面向方法**
+
+- **REST**：`GET /devices/42/temperature` —— 你在**操作一个资源**
+- **gRPC**：`DeviceService.GetTemperature(...)` —— 你在**调用一个函数**
+
+gRPC 表面上也用 HTTP POST，但它**故意违反了 REST 的资源导向** —— 把 URL 当**方法名**用。
+
+> **所以两者是两条不同的路线，不是新旧替代关系。** 可以共存（gRPC 甚至提供 JSON transcoding，能把 gRPC 服务自动暴露成 REST 接口）。
+
+---
+
 ## 2. 为什么要这样设计
 
 ### 要解决的问题
