@@ -180,17 +180,28 @@ static async Task AwaitHandleCall(HttpContextServerCallContext serverCallContext
 
 ---
 
-## 笔记目录
-
-按日期存放，每次会话一份：
+## 目录结构
 
 ```
 study/
-  README.md          ← 本文件（进度追踪）
-  notes/
-    YYYY-MM-DD-<主题>.md
-  pitfalls.md        ← 随时记录遇到的坑，不做成正式交付物
+  README.md          ← 本文件（进度追踪 + 模板）
+  notes/             ← 知识：概念、机制、结论（正确答案）
+    NN-<主题>.md
+  qa/                ← 过程：你的原始回答 + 我的批注（复盘用）
+    README.md        ← 索引 + ⚠️ 错误模式追踪
+    NN-<主题>.md
+  pitfalls.md        ← 坑位记录，不做成正式交付物
 ```
+
+**`notes/` 和 `qa/` 的区别**：
+
+| | 内容 | 用途 |
+|---|---|---|
+| `notes/` | 知识本身 | 学习、查阅 |
+| `qa/` | 你当时怎么想的、错在哪 | **复盘、追踪思维模式** |
+
+> **`qa/README.md` 里的「错误模式追踪」表是最值得回看的部分** ——
+> 单题答错是知识问题，同类型的错反复出现才是思维问题。
 
 ---
 
